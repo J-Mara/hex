@@ -6,7 +6,16 @@ import random
 from types import ModuleType
 from typing import List, Tuple, Optional
 
-from hex_evaluator import evaluate_hex
+# try:
+#     from hexfast import evaluate_hex
+# except ImportError:
+#     from hex_evaluator import evaluate_hex
+
+from hexfast import evaluate_hex
+
+#from hex_evaluator import evaluate_hex
+
+from hex_renderer import render_hex_game
 
 Move = Tuple[int, int]
 
@@ -54,6 +63,10 @@ def play_single_game(
 
         winner, _ = evaluate_hex(size, moves)
         if winner is not None:
+            #print(moves)
+            #render_hex_game(size, moves, show=True)
+            #if winner == 'White':
+            #    render_hex_game(size, moves, show=True)
             return winner
         if len(moves) == size * size:
             return 'Draw'                     # extremely rare in Hex (only possible via error)
@@ -160,4 +173,4 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# run with: python3 hex_arena.py --player1 random_player --player2 one_ahead_random_player --size 7 --games 100 --mode alternate --seed 42
+# run with: python hex_arena.py --player1 rl_player --player2 two_ahead_random_player_c --size 5 --games 1000 --mode p1_black --seed 234234
