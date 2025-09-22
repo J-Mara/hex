@@ -31,8 +31,8 @@ def pick_greedy_masked(logits: torch.Tensor, legal_mask: torch.Tensor) -> torch.
 def get_device() -> torch.device:
     try:
         if torch.backends.mps.is_available():
-            #return torch.device("mps")
-            return torch.device("cpu")
+            return torch.device("cuda")
+            #return torch.device("cpu")
     except Exception:
         pass
     return torch.device("cpu")
