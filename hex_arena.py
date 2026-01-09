@@ -90,7 +90,7 @@ def run_match(
     p1_black = p1_white = p2_black = p2_white = 0
 
     for g in range(1, games + 1):
-        # decide colours
+        # decide colors
         if mode == "p1_black":
             black_mod, white_mod = player1_mod, player2_mod
             p1_is_black = True
@@ -173,4 +173,4 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
-# run with: python hex_arena.py --player1 rl_player --player2 two_ahead_random_player_c --size 5 --games 1000 --mode p1_black --seed 234234
+# run with: python hex_arena.py --player1 random_player_c --player2 two_ahead_random_player_c --size 5 --games 1000 --mode alternate --seed 234234

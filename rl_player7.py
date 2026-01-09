@@ -30,6 +30,6 @@ def choose_move(size: int, moves: List[Move], rng=None) -> Move:
     x = env._obs().reshape(-1)  # [243]
     legal = np.ones(49, dtype=bool)
     for (r, c) in set(moves): legal[r*7 + c] = False
-    a = model.greedy(x, legal)
-    #a = model.sample(x, legal, temperature=5.0)
+    #a = model.greedy(x, legal)
+    a = model.sample(x, legal, temperature=3.0)
     return (a // 7, a % 7)

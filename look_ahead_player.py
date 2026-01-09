@@ -130,7 +130,9 @@ def choose_move(size: int, moves: List[Move], rng: random.Random | None = None, 
     Look-ahead Hex player.
     - Searches up to 'depth' full moves (our move then theirs) for a *forced* win.
     - If it finds one, plays the first move that guarantees a win within that depth.
-    - Otherwise, plays a random legal move.
+    #- Otherwise, plays a random legal move.
+    - Otherwise, it now tries to avoid handing the opponent a forced win within
+      (depth - 1) full moves before falling back to a random move.
 
     Assumptions:
     - Black always plays first; moves alternate strictly.
@@ -141,30 +143,43 @@ def choose_move(size: int, moves: List[Move], rng: random.Random | None = None, 
         # No legal moves left; return a dummy coordinate to avoid crashing (shouldn't happen)
         return (0, 0)
 
-    if (size - (len(moves)/2) > depth):
-        print("to early for informed search")
-        return rng.choice(legals)
+    # if (size - (len(moves)/2) > depth):
+    #     print("to early for informed search")
+    #     return rng.choice(legals)
 
     if rng is None:
         rng = random.Random()
 
+    if (size - (len(moves)/2) > depth):
+        print("too early for informed search, playing random move without lookahead")
+        return rng.choice(legals)
+
     winner = _winner_only(size, moves)
     if winner is not None:
+        print(f"board already has a winner ({winner}); selecting random legal move")
         return rng.choice(legals)
 
     root_color = _side_to_move(len(moves))
+    print(
+        f"look_ahead_player: {root_color} to move with depth={depth} on size {size} after {len(moves)} moves"
+    )
+
+    shared_cache: Dict[Tuple[int, str, int, int, int], bool] = {}
 
     # 1) Immediate win check (quick short-circuit)
     rng.shuffle(legals)  # randomize move order so multiple winning lines don't bias earlier cells
+    print(f"initial randomized move order for immediate-win scan: {legals}")
     for mv in legals:
         s1 = moves + [mv]
         if _winner_only(size, s1) == root_color:
             print("winning move")
             return mv  # snap up the instant win
+    print("no immediate winning move available")
 
     # 2) Forced win search up to 'depth' full moves
     if depth > 0:
-        cache: Dict[Tuple[int, str, int, int, int], bool] = {}
+        #cache: Dict[Tuple[int, str, int, int, int], bool] = {}
+        print(f"searching for guaranteed win within {depth} full moves")
         for mv in legals:
             s1 = moves + [mv]
             # If opponent has an immediate win reply, this move can't be a guaranteed win
@@ -177,16 +192,143 @@ def choose_move(size: int, moves: List[Move], rng: random.Random | None = None, 
                 if w2 == opp_color:
                     forced = False
                     break
-                if not _can_root_force_win_within(size, s2, depth - 1, root_color, cache):
+                #if not _can_root_force_win_within(size, s2, depth - 1, root_color, cache):
+                if not _can_root_force_win_within(size, s2, depth - 1, root_color, shared_cache):
                     forced = False
                     break
             if forced:
                 print("found guaranteed win")
                 return mv  # first guaranteed winning move found
+        print("no guaranteed win found within requested depth")
+    else:
+        print(f"depth {depth} too small for forced-win search; skipping that stage")
 
-    # 3) Fallback: random legal
-    print("random move")
-    return rng.choice(legals)
+    # 3) Defensive filter: avoid handing opponent a forced win within (depth - 1)
+    if depth > 0:
+        defensive_depth = depth - 1
+        opp_color = _opponent(root_color)
+        defensive_candidates = legals[:]
+        rng.shuffle(defensive_candidates)
+        print(
+            "evaluating moves to avoid opponent forced wins within "
+            f"{defensive_depth} full moves; randomized order: {defensive_candidates}"
+        )
+
+        for mv in defensive_candidates:
+            s1 = moves + [mv]
+            print(f"checking defensive safety of move {mv}")
+
+            # First, guard against immediate tactical losses
+            immediate_loss = False
+            opp_legals = _legal_moves(size, s1)
+            for omv in opp_legals:
+                s2 = s1 + [omv]
+                if _winner_only(size, s2) == opp_color:
+                    immediate_loss = True
+                    print(
+                        f" -> opponent wins immediately by replying with {omv}; move {mv} is unsafe"
+                    )
+                    break
+
+            if immediate_loss:
+                continue
+
+            opponent_can_force = False
+            if defensive_depth > 0:
+                opponent_can_force = _can_root_force_win_within(
+                    size, s1, defensive_depth, opp_color, shared_cache
+                )
+                print(
+                    " -> opponent forced-win status within depth-1 "
+                    f"({defensive_depth}): {opponent_can_force}"
+                )
+            else:
+                print(
+                    " -> defensive depth is 0; cannot look beyond immediate replies,"
+                    " treating move as safe if no instant loss"
+                )
+
+            if not opponent_can_force:
+                print(f"choosing move {mv} which does not hand opponent a forced win")
+                return mv
+            print(f"move {mv} rejected; opponent can force a win within {defensive_depth} moves")
+
+        print(
+            "all candidate moves allow the opponent a forced win within the defensive depth;"
+            " selecting a random move anyway"
+        )
+        fallback_move = rng.choice(defensive_candidates)
+        print(f"risk-accepting fallback move: {fallback_move}")
+        return fallback_move
+
+    # # 3) Fallback: random legal
+    # print("random move")
+    # return rng.choice(legals)
+    # 4) Final fallback when depth <= 0 prevented defensive filtering
+    print("no depth available for defensive filtering; choosing random move")
+    fallback_move = rng.choice(legals)
+    print(f"random fallback move: {fallback_move}")
+    return fallback_move
+
+# -------- strict version of move choice ------
+
+def choose_strict_move(size: int, moves: List[Move], rng: random.Random | None = None, depth: int = 5) -> Optional[Move]:
+    """
+    Strict Look-ahead Hex player.
+    - Searches up to 'depth' full moves (our move then theirs) for a *forced* win.
+    - If it finds one, plays the first move that guarantees a win within that depth.
+    - Otherwise, returns None.
+
+    Assumptions:
+    - Black always plays first; moves alternate strictly.
+    - evaluate_hex(size, moves) returns 'Black'/'White'/None or (winner, extra).
+    """
+    legals = _legal_moves(size, moves)
+    if not legals:
+        # No legal moves left; return None
+        return None
+
+    if rng is None:
+        rng = random.Random()
+
+    winner = _winner_only(size, moves)
+    if winner is not None:
+        print(f"board already has a winner ({winner}); returning None")
+        return None
+
+    root_color = _side_to_move(len(moves))
+    # print(
+    #     f"look_ahead_player: {root_color} to move with depth={depth} on size {size} after {len(moves)} moves"
+    # )
+
+    shared_cache: Dict[Tuple[int, str, int, int, int], bool] = {}
+    #Forced win search up to 'depth' full moves
+    if depth > 0:
+        #cache: Dict[Tuple[int, str, int, int, int], bool] = {}
+        #print(f"searching for guaranteed win within {depth} full moves")
+        for mv in legals:
+            s1 = moves + [mv]
+            # If opponent has an immediate win reply, this move can't be a guaranteed win
+            opp_legals = _legal_moves(size, s1)
+            opp_color = _opponent(root_color)
+            forced = True
+            for omv in opp_legals:
+                s2 = s1 + [omv]
+                w2 = _winner_only(size, s2)
+                if w2 == opp_color:
+                    forced = False
+                    break
+                #if not _can_root_force_win_within(size, s2, depth - 1, root_color, cache):
+                if not _can_root_force_win_within(size, s2, depth - 1, root_color, shared_cache):
+                    forced = False
+                    break
+            if forced:
+                print("found guaranteed win")
+                return mv  # first guaranteed winning move found
+        print("no guaranteed win found within requested depth")
+    else:
+        print(f"depth {depth} too small for forced-win search")
+    return None
 
 # Optional quick self-test
 if __name__ == "__main__":
